@@ -7,6 +7,7 @@ import nltk
 import pandas as pd
 import uuid
 import numpy as np
+import pm4py
 
 PATH_TO_PROJECT = "repos/project"
 RESULT_PATH = "result"
@@ -35,7 +36,7 @@ def get_git_log():
         # "--shortstat", we will deal with this later
         "--format=%h;%an;%as;%f"], stdout=f)
 
-def create_csv_from_git_log(case_grouping_strategy):
+def create_csv_from_git_log():
     header_names=["shaid","author","date","message","activity", "case id"]
     df = pd.read_csv(LOG_NAME, sep=";", header=None, names=header_names, parse_dates=["date"])
     df["date"] = pd.to_datetime(df["date"], format="%Y-%m-%d")
@@ -47,10 +48,8 @@ def create_csv_from_git_log(case_grouping_strategy):
         message = None
         author = None
 
-        if case_grouping_strategy == "date":
-            df["case id"][i] = "case_" + str(df["date"][i].value)
-        elif case_grouping_strategy == "user":
-            df["case id"][i] = "case_" + str(df["author"][i].replace(" ", "_"))
+        df["case id"][i] = "case_" + str(df["date"][i].value)
+        # df["case id"][i] = "case_" + str(df["author"][i].replace(" ", "_"))
 
         try:
             message = str(df["message"][i]).lower()
@@ -70,7 +69,13 @@ def create_csv_from_git_log(case_grouping_strategy):
             first_word = message.split(SEPARATOR)[0]
             df["activity"][i] = ls.stem(first_word)
     
-    df.to_csv(f"result_{str(uuid.uuid4())}.csv", index=False, header=True)
+    filename=str(uuid.uuid4())
+    for idx, chunk in enumerate(np.array_split(df, 10)):
+        # chunk.to_csv(f"../../{filename}_part{idx}.csv", index=False, header=True)
+        chunk = pm4py.format_dataframe(chunk, case_id="case id", activity_key="activity", timestamp_key="date")
+        log = pm4py.convert_to_event_log(chunk)
+        pm4py.write_xes(log, f"../../results/{filename}_part{idx}.xes")
+
         
 # could be extended
 def is_bot(author):
@@ -80,7 +85,7 @@ def starts_with_verb(message):
     VERB_CODES = ["VB", "VBD", "VBG", "VBN", "VBP", "VBZ", "VERB"]
     sentence = message.replace("-", " ").capitalize() + "."
     code_for_wirst_word = nltk.pos_tag(word_tokenize(sentence))[0][1]
-    asd = nltk.pos_tag(word_tokenize(sentence))
+    nltk.pos_tag(word_tokenize(sentence))
     return code_for_wirst_word in VERB_CODES
 
 def is_issue(message: str):
@@ -88,12 +93,12 @@ def is_issue(message: str):
     return len(splits) > 1 and splits[1].isnumeric()
 
 if __name__ == "__main__":
-    if len(sys.argv) <= 2:
+    if len(sys.argv) <= 1:
         print("USAGE...")
     
     nltk.download('punkt')
     nltk.download('averaged_perceptron_tagger')
     clone_repository(sys.argv[1])
     get_git_log()
-    create_csv_from_git_log(sys.argv[2])
+    create_csv_from_git_log()
     

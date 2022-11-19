@@ -213,3 +213,7 @@ $RECYCLE.BIN/
 # Project specific
 repos/*
 !repos/.gitkeep
+results/*
+!results/.gitkeep
+*.csv
+*.xes
