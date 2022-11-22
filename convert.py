@@ -9,7 +9,6 @@ import uuid
 import numpy as np
 import pm4py
 
-PATH_TO_PROJECT = "repos/project"
 RESULT_PATH = "result"
 CSV = "csv"
 LOG_NAME = "log.txt"
@@ -17,13 +16,17 @@ SEPARATOR = "-"
 
 def clone_repository(uri):
     # TODO: better exception handling
+    git_name = uri.split("/")[-1]
+    folder = f"repos/{git_name}"
     try:
-        subprocess.call(["git", "clone", uri, PATH_TO_PROJECT])
+        subprocess.call(["git", "clone", uri, folder])
     except Exception as e:
         print("asd")
+    
+    return folder
 
-def get_git_log():
-    os.chdir(PATH_TO_PROJECT)
+def get_git_log(folder):
+    os.chdir(folder)
     with open(LOG_NAME, "w") as f:
         subprocess.call([
         "git", 
@@ -37,7 +40,7 @@ def get_git_log():
         "--format=%h;%an;%as;%f"], stdout=f)
 
 def create_csv_from_git_log():
-    header_names=["shaid","author","date","message","activity", "case id"]
+    header_names=["id","author","date","subject_line","activity", "case id"]
     df = pd.read_csv(LOG_NAME, sep=";", header=None, names=header_names, parse_dates=["date"])
     df["date"] = pd.to_datetime(df["date"], format="%Y-%m-%d")
 
@@ -63,15 +66,14 @@ def create_csv_from_git_log():
             df["activity"][i] = "issue"
         elif is_bot(author):
             df["activity"][i] = "bot"
-        # elif not starts_with_verb(message):
-        #     df["activity"][i] = "nonconventional"
+        elif not starts_with_verb(message):
+            df["activity"][i] = "nonconventional"
         else:
             first_word = message.split(SEPARATOR)[0]
             df["activity"][i] = ls.stem(first_word)
-    
+
     filename=str(uuid.uuid4())
     for idx, chunk in enumerate(np.array_split(df, 10)):
-        # chunk.to_csv(f"../../{filename}_part{idx}.csv", index=False, header=True)
         chunk = pm4py.format_dataframe(chunk, case_id="case id", activity_key="activity", timestamp_key="date")
         log = pm4py.convert_to_event_log(chunk)
         pm4py.write_xes(log, f"../../results/{filename}_part{idx}.xes")
@@ -98,7 +100,7 @@ if __name__ == "__main__":
     
     nltk.download('punkt')
     nltk.download('averaged_perceptron_tagger')
-    clone_repository(sys.argv[1])
-    get_git_log()
+    folder = clone_repository(sys.argv[1])
+    get_git_log(folder)
     create_csv_from_git_log()
     

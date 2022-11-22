@@ -11,7 +11,9 @@
             "program": "${file}",
             "console": "integratedTerminal",
             "justMyCode": true,
-            "args": ["https://github.com/jenkinsci/jenkins.git"], // date, user
+            "args": ["https://github.com/jenkinsci/jenkins.git"],
+            // "args": ["https://github.com/jenkinsci/git-plugin.git"],
+            // "args": ["https://github.com/apache/maven.git"],
             "purpose": ["debug-in-terminal"]
         }
     ]
