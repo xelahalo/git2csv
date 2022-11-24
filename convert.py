@@ -16,7 +16,7 @@ CSV = "csv"
 LOG_NAME = "log.txt"
 SEPARATOR = " "
 COMMON_WORDS = "common_title_words.txt"
-
+VERB_CODES = ["VB", "VBD", "VBG", "VBN", "VBP", "VBZ", "VERB"]
 common_words = []
 
 def clone_repository(uri):
@@ -56,12 +56,12 @@ def get_git_log_with_stats(folder):
             "--find-renames",
             "--reverse",
             "--encoding=UTF-8",
-            "--pretty=format:%H;%an;%at;%s"
+            "--pretty=format:%H;%an;%as;%s"
         ], stdout=f)
 
 def process_log():
-    header_regex = "(.*);(.*);(\d+);(.*)"
-    stats_regex = "\d+\s+\d+\s+(\S+)\s*"
+    header_regex = "(.*);(.*);(\d+-\d+-\d+);(.*)"
+    stats_regex = "[\d-]+\s+[\d-]+\s+(\S+)\s*"
     rename_regex = "{(\S+)\s*=>\s*(\S+)}(\S+)"
 
     ls = LancasterStemmer()
@@ -75,7 +75,9 @@ def process_log():
             header = re.match(header_regex, row)
             if header is not None:
                 shaid, author, time, sl = header.groups()
-                prev_header = {"id": shaid, "author": author.lower(), "time": time, "subject_line": sl.lower()}
+                sl = sl.lower()
+                author = author.lower()
+                prev_header = {"id": shaid, "author": author, "time": time, "subject_line": sl, "activity": get_activity(sl, author, ls)}
                 continue
 
             stats = re.match(stats_regex, row)
@@ -100,11 +102,6 @@ def process_log():
                         del rows_to_append[key]
 
                     filename = target
-                
-                sl = prev_header["subject_line"]
-                author = prev_header["author"]
-
-                activity = get_activity(sl, author, ls)
                
                 key = filename
                 if filename in file_case_counter.keys():
@@ -115,11 +112,11 @@ def process_log():
                     key += "_0"
                     file_case_counter[filename] = 1
 
-                rows_to_append[key] = {"id": prev_header["id"], "author": author, "time": prev_header["time"], "subject_line": sl, "activity": activity}
+                rows_to_append[key] = prev_header
 
     for key in rows_to_append.keys():
-        case_id = key.rstrip(string.digits)
-        rows_to_append[key]["case_id"] = hash(case_id)
+        case_id = key.rstrip(string.digits + '_')
+        rows_to_append[key]["case_id"] = case_id
 
     df = pd.DataFrame.from_records(list(rows_to_append.values()))
 
@@ -155,17 +152,20 @@ def create_xes_from_git_log():
 def write_xes(df):
     filename=str(uuid.uuid4())
     # TODO make it be aware of the traces
-    for idx, chunk in enumerate(np.array_split(df, 10)):
-        chunk = pm4py.format_dataframe(chunk, case_id="case_id", activity_key="activity", timestamp_key="time")
-        log = pm4py.convert_to_event_log(chunk)
-        pm4py.write_xes(log, f"../../results/{filename}_part{idx}.xes")
+    # for idx, chunk in enumerate(np.array_split(df, 10)):
+    #     chunk = pm4py.format_dataframe(chunk, case_id="case_id", activity_key="activity", timestamp_key="time")
+    #     log = pm4py.convert_to_event_log(chunk)
+    #     pm4py.write_xes(log, f"../../results/{filename}_part{idx}.xes")
+    df = pm4py.format_dataframe(df, case_id="case_id", activity_key="activity", timestamp_key="time")
+    log = pm4py.convert_to_event_log(df)
+    pm4py.write_xes(log, f"../../results/{filename}.xes")
 
 def get_activity(message, author, stemmer):
     if is_issue(message):
         return "issue"
     elif is_bot(author):
         return "bot"
-    elif not starts_with_verb(message):
+    elif not is_conventional(message):
         return "nonconventional"
     else:
         first_word = message.split(SEPARATOR)[0]
@@ -175,8 +175,10 @@ def get_activity(message, author, stemmer):
 def is_bot(author):
     return "bot" in author
 
-def starts_with_verb(message):
-    VERB_CODES = ["VB", "VBD", "VBG", "VBN", "VBP", "VBZ", "VERB"]
+def is_conventional(message):
+    if message.endswith('.') or len(message) > 50:
+        return False
+    
     sentence = message.capitalize() + "."
     first_word = nltk.pos_tag(word_tokenize(sentence))[0]
 
@@ -188,15 +190,15 @@ def is_issue(message: str):
 
 def load_common_words():
     with open(COMMON_WORDS, "r") as f:
-        common_words = f.readlines()
+        return [line.strip() for line in f.readlines()]
 
 if __name__ == "__main__":
     if len(sys.argv) <= 1:
         print("USAGE...")
-    
+
     # nltk.download('punkt')
     # nltk.download('averaged_perceptron_tagger')
-    load_common_words()
+    common_words = load_common_words()
     folder = clone_repository(sys.argv[1])
     get_git_log_with_stats(folder)
     # create_csv_from_git_log()
