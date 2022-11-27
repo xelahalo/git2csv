@@ -53,7 +53,6 @@ def get_git_log_with_stats(folder):
             "-w",
             "--all",
             "--numstat",
-            "--find-renames",
             "--reverse",
             "--encoding=UTF-8",
             "--pretty=format:%H;%an;%as;%s"
@@ -61,8 +60,8 @@ def get_git_log_with_stats(folder):
 
 def process_log():
     header_regex = "(.*);(.*);(\d+-\d+-\d+);(.*)"
-    stats_regex = "[\d-]+\s+[\d-]+\s+(\S+)\s*"
-    rename_regex = "{(\S+)\s*=>\s*(\S+)}(\S+)"
+    stats_regex = "[\d-]+\s+[\d-]+\s+([\S ]+)\s*"
+    rename_regex = "(\S*)\s*=>\s*(\S*)"
 
     ls = LancasterStemmer()
 
@@ -86,22 +85,7 @@ def process_log():
                 rename_match = re.match(rename_regex, filename)
 
                 if rename_match is not None:
-                    source, target, remaining_path = rename_match.groups()
-                    source = source + remaining_path
-                    target = target + remaining_path
-
-                    no_of_cases_for_file = file_case_counter[source]
-                    file_case_counter[target] = no_of_cases_for_file
-                    del file_case_counter[source]
-
-                    for i in range(no_of_cases_for_file):
-                        key = f"{source}_{str(i)}"
-                        new_key = f"{target}_{str(i)}"
-                        row = rows_to_append[key]
-                        rows_to_append[new_key] = row
-                        del rows_to_append[key]
-
-                    filename = target
+                    continue
                
                 key = filename
                 if filename in file_case_counter.keys():
@@ -112,7 +96,7 @@ def process_log():
                     key += "_0"
                     file_case_counter[filename] = 1
 
-                rows_to_append[key] = prev_header
+                rows_to_append[key] = prev_header.copy()
 
     for key in rows_to_append.keys():
         case_id = key.rstrip(string.digits + '_')
@@ -152,13 +136,13 @@ def create_xes_from_git_log():
 def write_xes(df):
     filename=str(uuid.uuid4())
     # TODO make it be aware of the traces
-    # for idx, chunk in enumerate(np.array_split(df, 10)):
-    #     chunk = pm4py.format_dataframe(chunk, case_id="case_id", activity_key="activity", timestamp_key="time")
-    #     log = pm4py.convert_to_event_log(chunk)
-    #     pm4py.write_xes(log, f"../../results/{filename}_part{idx}.xes")
-    df = pm4py.format_dataframe(df, case_id="case_id", activity_key="activity", timestamp_key="time")
-    log = pm4py.convert_to_event_log(df)
-    pm4py.write_xes(log, f"../../results/{filename}.xes")
+    for idx, chunk in enumerate(np.array_split(df, 10)):
+        chunk = pm4py.format_dataframe(chunk, case_id="case_id", activity_key="activity", timestamp_key="time")
+        log = pm4py.convert_to_event_log(chunk)
+        pm4py.write_xes(log, f"../../results/{filename}_part{idx}.xes")
+    # df = pm4py.format_dataframe(df, case_id="case_id", activity_key="activity", timestamp_key="time")
+    # log = pm4py.convert_to_event_log(df)
+    # pm4py.write_xes(log, f"../../results/{filename}.xes")
 
 def get_activity(message, author, stemmer):
     if is_issue(message):
